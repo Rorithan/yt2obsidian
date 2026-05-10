@@ -1,4 +1,4 @@
-# !/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import yt_dlp
 import requests
@@ -9,8 +9,7 @@ from .base import ContentProcessor
 from config import Config
 
 class YouTubeProcessor(ContentProcessor):
-    """YouTube → clean Obsidian markdown (metadata + thumbnail + perfectly cleaned transcript). No video download."""
-    """YouTube → clean Obsidian markdown. No video download."""
+    """YouTube → clean Obsidian markdown (metadata + thumbnail + perfectly cleaned transcript). No video download by default."""
 
     def process(self) -> Path:
         try:
@@ -28,7 +27,7 @@ class YouTubeProcessor(ContentProcessor):
             print("🖼️  Thumbnail...")
             self._download_thumbnail(info, safe_name)
 
-            content = self._build_markdown(info, safe_name, transcript_content)
+            content = self._build_markdown(info, safe_name, transcript)
             md_path.write_text(content, encoding='utf-8')
 
             print(f"✅ {md_path.name}")
@@ -39,7 +38,8 @@ class YouTubeProcessor(ContentProcessor):
             raise
 
     def _download_and_process_captions(self, info: dict, safe_name: str) -> str:
-        for manual in (True, False):  # expert → auto fallback
+        """Download subtitles (manual preferred, fallback auto) and clean for Obsidian."""
+        for manual in (True, False):  # expert → auto
             opts = {
                 'writesubtitles': manual,
                 'writeautomaticsub': not manual,
@@ -53,7 +53,6 @@ class YouTubeProcessor(ContentProcessor):
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     ydl.download([self.url])
-
                 vtt_files = list(Config.OUTPUT_MD.glob(f"{safe_name}*.vtt"))
                 if vtt_files:
                     vtt_path = vtt_files[0]
@@ -66,32 +65,7 @@ class YouTubeProcessor(ContentProcessor):
         return "No transcript available."
 
     def _process_vtt_for_obsidian(self, vtt_path: Path, safe_name: str) -> str:
-        """Ultra-clean VTT → Obsidian clickable timestamps. Fixed regex + dedup."""
-    def _download_and_process_captions(self, info: dict, safe_name: str) -> str:
-        for manual in (True, False):
-            opts = {
-                'writesubtitles': manual,
-                'writeautomaticsub': not manual,
-                'subtitleslangs': ['en'],
-                'subtitlesformat': 'vtt',
-                'skip_download': True,
-                'quiet': True,
-                'no_warnings': True,
-                'outtmpl': str(Config.OUTPUT_MD / safe_name),
-            }
-            try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    ydl.download([self.url])
-                vtt = next(Config.OUTPUT_MD.glob(f"{safe_name}*.vtt"), None)
-                if vtt:
-                    transcript = self._process_vtt_for_obsidian(vtt, safe_name)
-                    vtt.unlink(missing_ok=True)
-                    return transcript
-            except Exception:
-                continue
-        return "No transcript available."
-
-    def _process_vtt_for_obsidian(self, vtt_path: Path, safe_name: str) -> str:
+        """Ultra-clean VTT → Obsidian-friendly timestamped lines with dedup."""
         lines: list[str] = []
         current_ts: str | None = None
         seen = set()
@@ -99,23 +73,10 @@ class YouTubeProcessor(ContentProcessor):
         with vtt_path.open(encoding='utf-8', errors='ignore') as f:
             for raw in f:
                 line = raw.strip()
-
                 if '-->' in line:
                     try:
                         start = line.split('-->')[0].strip()
                         current_ts = start.split('.')[0]  # HH:MM:SS
-                    except:
-                        current_ts = None
-                    continue
-        current_ts: str | None = None
-        seen = set()
-
-        with vtt_path.open(encoding='utf-8', errors='ignore') as f:
-            for raw in f:
-                line = raw.strip()
-                if '-->' in line:
-                    try:
-                        current_ts = line.split('-->')[0].strip().split('.')[0]
                     except:
                         current_ts = None
                     continue
@@ -125,8 +86,7 @@ class YouTubeProcessor(ContentProcessor):
                             .replace('&nbsp;', ' ')
                             .replace('<c>', '').replace('</c>', '')
                             .strip())
-
-                    # AGGRESSIVE CLEANING
+                    # Aggressive cleaning for clean Obsidian display
                     text = re.sub(r'\d{2}:\d{2}\.\d{3}>', ' ', text)
                     text = re.sub(r'<\d{2}:\d{2}:\d{2}\.\d{3}>', ' ', text)
                     text = re.sub(r'<[^>]+>', '', text)
@@ -137,33 +97,15 @@ class YouTubeProcessor(ContentProcessor):
                             and not text.startswith('[')
                             and not any(x in text.lower() for x in ['00:00', 'stay back'])):
                         seen.add(text)
-                        link = f"[[{safe_name}.mp4#{current_ts}|{current_ts}]]"
-                        lines.append(f"{link} {text}")
-
-                if line and current_ts and not line.startswith(('WEBVTT', 'Kind:', 'Language:')):
-                    text = (line
-                            .replace('&nbsp;', ' ')
-                            .replace('<c>', '').replace('</c>', '')
-                            .strip())
-
-                    # Root-cause fix: aggressive, raw-string regexes
-                    text = re.sub(r'\d{2}:\d{2}\.\d{3}>', ' ', text)
-                    text = re.sub(r'<\d{2}:\d{2}:\d{2}\.\d{3}>', ' ', text)
-                    text = re.sub(r'<[^>]+>', '', text)
-                    text = re.sub(r'&gt;&gt;|\[\s*\]', '', text)
-                    text = re.sub(r'\s+', ' ', text).strip()
-
-                    if (text and text not in seen and len(text) > 4
-                            and not text.startswith('[')
-                            and not any(x in text.lower() for x in ['00:00', 'stay back'])):
-                        seen.add(text)
+                        # Timestamp link assumes optional local video (configurable in config.py)
                         link = f"[[{safe_name}.mp4#{current_ts}|{current_ts}]]"
                         lines.append(f"{link} {text}")
 
         return "\n\n".join(lines) if lines else "No transcript available."
 
     def _build_markdown(self, info: dict, safe_name: str, transcript: str) -> str:
-        # Date (robust fallbacks)
+        """Build rich Obsidian markdown with frontmatter."""
+        # Date handling with robust fallbacks
         date_str = info.get('upload_date') or info.get('release_date') or info.get('timestamp')
         date_link = "[[No Date]]"
         if date_str:
@@ -204,12 +146,14 @@ tags: []
 """
 
     def _seconds_to_hms(self, seconds: int) -> str:
+        """Convert seconds to HH:MM:SS or MM:SS."""
         h = seconds // 3600
         m = (seconds % 3600) // 60
         s = seconds % 60
         return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
     def _download_thumbnail(self, info: dict, safe_name: str):
+        """Download thumbnail if available."""
         url = info.get('thumbnail') or (info.get('thumbnails') or [{}])[-1].get('url')
         if not url:
             return
@@ -219,5 +163,3 @@ tags: []
                 (Config.OUTPUT_IMAGES / f"{safe_name}_thumbnail.jpg").write_bytes(r.content)
         except Exception:
             pass
-"""
-    # _build_markdown, _seconds_to_hms, _download_thumbnail remain unchanged (date fix already in previous version)
