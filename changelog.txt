@@ -1,0 +1,20 @@
+
+To do
+Auto import
+Check instagram and webpages and pdfs
+
+Optional
+Audio download (will need a plugin in obsidian for long audio files, and maybe get the timestamped transcript from that instead)
+
+
+
+1
+YouTube works. 
+No transcript. 
+Thumbnail missing, needs to also capture and name separately for easy obsidian import. 
+Properties needs to be cleaned up especially the upload date to match my dating system. 
+Minor issue with the title and it repeating in the body of the note. 
+Link should be at the top. 
+Tagging is a little too liberal, maybe no tags.
+
+2
