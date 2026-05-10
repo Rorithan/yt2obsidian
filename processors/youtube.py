@@ -14,7 +14,6 @@ class YouTubeProcessor(ContentProcessor):
 
     def process(self) -> Path:
         try:
-            # 1. Metadata extraction
             print("📋 Extracting metadata...")
             with yt_dlp.YoutubeDL({
                 'skip_download': True,
@@ -27,15 +26,12 @@ class YouTubeProcessor(ContentProcessor):
             safe_name = self._get_safe_filename(title)
             md_path = Config.OUTPUT_MD / f"{safe_name}.md"
 
-            # 2. Download & process captions
             print("📝 Downloading and processing captions (expert mode)...")
             transcript_content = self._download_and_process_captions(info, safe_name)
 
-            # 3. Download thumbnail
             print("🖼️  Downloading thumbnail...")
             self._download_thumbnail(info, safe_name)
 
-            # 4. Build final markdown
             content = self._build_markdown(info, safe_name, transcript_content)
             md_path.write_text(content, encoding='utf-8')
 
@@ -48,7 +44,6 @@ class YouTubeProcessor(ContentProcessor):
             raise
 
     def _download_and_process_captions(self, info: dict, safe_name: str) -> str:
-        """Try manual subtitles first, then auto-generated."""
         for manual in (True, False):
             subtitle_opts = {
                 'writesubtitles': manual,
@@ -72,12 +67,11 @@ class YouTubeProcessor(ContentProcessor):
                     return transcript
             except Exception:
                 continue
-
         print("    ⚠️  No captions found")
         return "No transcript available."
 
     def _process_vtt_for_obsidian(self, vtt_path: Path, safe_name: str) -> str:
-        """Aggressive cleaning for both manual and messy auto-generated YouTube captions."""
+        """Ultra-aggressive cleaner for messy YouTube auto-captions."""
         lines: list[str] = []
         current_ts: str | None = None
         seen = set()
@@ -86,62 +80,52 @@ class YouTubeProcessor(ContentProcessor):
             for raw_line in f:
                 line = raw_line.strip()
 
-                if '-->' in line:  # timestamp line
+                if '-->' in line:
                     try:
                         start_part = line.split('-->')[0].strip()
-                        current_ts = start_part.split('.')[0]  # HH:MM:SS
+                        current_ts = start_part.split('.')[0]
                     except:
                         current_ts = None
                     continue
 
                 if line and current_ts and not line.startswith(('WEBVTT', 'Kind:', 'Language:')):
-                    # Heavy cleaning
                     clean_text = (line
                         .replace('&nbsp;', ' ')
                         .replace('<c>', '').replace('</c>', '')
                         .strip())
 
-                    # Remove ALL inline timing junk like "00:09.240> okay"
-                    clean_text = re.sub(r'\d{2}:\d{2}\.\d{3}>', '', clean_text)
-                    clean_text = re.sub(r'<\d{2}:\d{2}:\d{2}\.\d{3}>', '', clean_text)
-                    clean_text = re.sub(r'<[^>]+>', '', clean_text)  # any remaining tags
-
+                    # Remove every common timing/junk pattern YouTube auto-captions produce
+                    clean_text = re.sub(r'\d{2}:\d{2}\.\d{3}>', ' ', clean_text)
+                    clean_text = re.sub(r'<\d{2}:\d{2}:\d{2}\.\d{3}>', ' ', clean_text)
+                    clean_text = re.sub(r'<[^>]+>', '', clean_text)
                     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
 
-                    if clean_text and clean_text not in seen and not clean_text.startswith('['):
+                    if clean_text and clean_text not in seen and len(clean_text) > 2 and not clean_text.startswith('['):
                         seen.add(clean_text)
                         timestamp_link = f"[[{safe_name}.mp4#{current_ts}|{current_ts}]]"
                         lines.append(f"{timestamp_link} {clean_text}")
 
-        if not lines:
-            return "No transcript available."
-
-        return "\n\n".join(lines)
+        return "\n\n".join(lines) if lines else "No transcript available."
 
     def _build_markdown(self, info: dict, safe_name: str, transcript_content: str) -> str:
-        # Improved date parsing with multiple fallbacks
-        upload_date = info.get('upload_date') or info.get('release_date')
+        # Robust date handling
+        date_str = info.get('upload_date') or info.get('release_date') or info.get('timestamp')
         date_link = "[[No Date]]"
-        if upload_date:
+        if date_str:
             try:
-                # Try standard YouTube format first
-                dt = datetime.strptime(upload_date, '%Y%m%d')
+                if str(date_str).isdigit() and len(str(date_str)) > 8:
+                    dt = datetime.fromtimestamp(int(date_str))
+                else:
+                    dt = datetime.strptime(str(date_str)[:8], '%Y%m%d')
                 date_link = dt.strftime("[[journal/%Y/%m %B/%B %d %Y|%B %d %Y]]")
             except:
-                try:
-                    # Fallback for timestamp (unix seconds)
-                    dt = datetime.fromtimestamp(int(upload_date))
-                    date_link = dt.strftime("[[journal/%Y/%m %B/%B %d %Y|%B %d %Y]]")
-                except:
-                    pass
+                pass
 
         uploader = info.get('uploader', 'Unknown').replace('"', '').strip()
         duration_hms = self._seconds_to_hms(info.get('duration', 0))
         thumbnail_local = f"{safe_name}_thumbnail.jpg"
 
-        # Improved description handling
-        description = info.get('description') or info.get('alt_title') or ''
-        description = description.strip() or 'No description available.'
+        description = (info.get('description') or '').strip() or 'No description available.'
 
         return f"""---
 title: "{info.get('title', 'Untitled')}"
