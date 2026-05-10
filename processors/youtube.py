@@ -8,7 +8,12 @@ from .base import ContentProcessor
 
 class YouTubeProcessor(ContentProcessor):
     def process(self) -> Path:
-        ydl_opts_info = {'skip_download': True, 'quiet': True, 'no_warnings': True}
+        # 1. Get metadata
+        ydl_opts_info = {
+            'skip_download': True,
+            'quiet': True,
+            'no_warnings': True,
+        }
         with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
             info = ydl.extract_info(self.url, download=False)
 
@@ -16,7 +21,7 @@ class YouTubeProcessor(ContentProcessor):
         safe_name = self._get_safe_filename(title)
         md_path = self.output_dir / f"{safe_name}.md"
 
-        # Download subtitles temporarily
+        # 2. Download subtitles temporarily
         ydl_opts_sub = {
             'skip_download': True,
             'quiet': True,
@@ -31,11 +36,12 @@ class YouTubeProcessor(ContentProcessor):
         with yt_dlp.YoutubeDL(ydl_opts_sub) as ydl:
             ydl.download([self.url])
 
+        # 3. Build markdown with timestamped transcript
         content = self._build_markdown(info, safe_name)
         md_path.write_text(content, encoding='utf-8')
 
         self._download_thumbnail(info, safe_name)
-        self._cleanup_vtt_files(safe_name)
+        self._cleanup_vtt_files(safe_name)   # Delete .vtt files
 
         return md_path
 
@@ -68,16 +74,12 @@ duration: {info.get('duration', 0)}s
 - [Watch on YouTube]({self.url})
 
 ## Transcript
-<details>
-<summary>Click to expand full timestamped transcript</summary>
-
 {transcript}
-
-</details>
 """
         return md
 
     def _get_timestamped_transcript(self, safe_name: str, video_id: str) -> str:
+        """Parse VTT and convert to timestamped markdown links."""
         vtt_files = list(self.output_dir.glob(f"{safe_name}*.vtt"))
         if not vtt_files:
             return "> No transcript available."
@@ -93,32 +95,29 @@ duration: {info.get('duration', 0)}s
                 line = line.strip()
                 if not line or line.startswith(("WEBVTT", "Kind:", "Language:")):
                     continue
-                if "-->" in line:
+
+                if "-->" in line:  # Timestamp line
                     try:
-                        time_str = line.split("-->")[0].strip().split(".")[0]
-                        h, m, s = map(int, time_str.split(":")[:3])
-                        current_time = h*3600 + m*60 + s
+                        # Extract start time (e.g. 00:01:23.456 --> ...)
+                        time_str = line.split("-->")[0].strip()
+                        h, m, s = time_str.split(":")[:3]
+                        current_time = int(h)*3600 + int(m)*60 + int(float(s))
                     except:
                         continue
                     continue
 
-                if line and not line.startswith(("♪", " ")):
-                    clean_line = line.replace("♪", "").strip()
-                    if clean_line:
-                        ts_link = f"[{self._format_timestamp(current_time)}](https://youtu.be/{video_id}&t={current_time}s)"
-                        lines.append(f"{ts_link} {clean_line}")
+                if line and line not in ["", " "]:
+                    timestamp_link = f"[{self._format_timestamp(current_time)}](https://youtu.be/{video_id}&t={current_time}s)"
+                    lines.append(f"{timestamp_link} {line}")
 
-            # Group every 2-3 lines for better readability
-            grouped = []
-            for i in range(0, len(lines), 2):
-                grouped.append("\n".join(lines[i:i+2]))
-
-            return "\n\n".join(grouped)
+            clean_transcript = "\n\n".join(lines)
+            return clean_transcript if clean_transcript else "> Transcript found but could not be parsed."
 
         except Exception as e:
             return f"> Could not parse transcript: {e}"
 
     def _format_timestamp(self, seconds: int) -> str:
+        """Convert seconds to MM:SS or HH:MM:SS"""
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
         secs = seconds % 60
@@ -137,6 +136,7 @@ duration: {info.get('duration', 0)}s
                 pass
 
     def _cleanup_vtt_files(self, safe_name: str):
+        """Delete all .vtt files after processing"""
         for vtt in self.output_dir.glob(f"{safe_name}*.vtt"):
             try:
                 vtt.unlink()
