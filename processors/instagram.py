@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 import yt_dlp
 import subprocess
-import re
 from pathlib import Path
 from datetime import datetime
 from .base import ContentProcessor
@@ -11,22 +10,26 @@ from utils import clean_title_for_filename
 
 
 class InstagramProcessor(ContentProcessor):
-    """Processes Instagram posts/reels into rich Obsidian markdown."""
+    """Processes Instagram reels/posts."""
 
     def process(self) -> Path:
         try:
-            # 1. Extract metadata
-            meta_opts = {
+            cookies_tuple = (Config.INSTAGRAM_BROWSER, None, None, None)
+
+            common_opts = {
                 'quiet': True,
                 'no_warnings': True,
-                'skip_download': True,
+                'cookiesfrombrowser': cookies_tuple,
                 'extractor_args': {'instagram': {'variant': 'ios'}},
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15'
                 },
             }
 
-            with yt_dlp.YoutubeDL(meta_opts) as ydl:
+            print(f"🔑 Using {Config.INSTAGRAM_BROWSER} cookies for Instagram...")
+
+            # Metadata
+            with yt_dlp.YoutubeDL({**common_opts, 'skip_download': True}) as ydl:
                 info = ydl.extract_info(self.url, download=False)
 
             raw_title = info.get('title') or info.get('description') or "Instagram Post"
@@ -35,29 +38,27 @@ class InstagramProcessor(ContentProcessor):
             video_id = info.get('id', 'igpost')
             base_name = f"{safe_name} [{video_id}]"
 
-            # Paths using Config (user can change these)
             video_path = Config.OUTPUT_VIDEOS / f"{base_name}.mp4"
             md_path = Config.OUTPUT_MD / f"{base_name}.md"
 
-            # 2. Download video
+            # Download video
             print("⬇️  Downloading Instagram media...")
             dl_opts = {
-                **meta_opts,
+                **common_opts,
                 'skip_download': False,
                 'outtmpl': str(Config.OUTPUT_VIDEOS / base_name),
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'merge_output_format': 'mp4',
-                'writethumbnail': False,
             }
 
             with yt_dlp.YoutubeDL(dl_opts) as ydl:
                 ydl.download([self.url])
 
-            # 3. Transcribe with Whisper (macOS native friendly)
+            # Transcribe
             print("🎤 Transcribing with Whisper...")
             transcript = self._transcribe_video(video_path)
 
-            # 4. Build rich Markdown
+            # Build MD
             content = self._build_markdown(info, base_name, f"{base_name}.mp4", transcript, clean_title)
             md_path.write_text(content, encoding='utf-8')
 
@@ -72,7 +73,6 @@ class InstagramProcessor(ContentProcessor):
             raise
 
     def _build_markdown(self, info: dict, base_name: str, video_filename: str, transcript: str, clean_title: str) -> str:
-        # Date handling
         timestamp = info.get('timestamp')
         date_link = "[[No Date]]"
         if timestamp:
@@ -82,7 +82,6 @@ class InstagramProcessor(ContentProcessor):
             except:
                 pass
 
-        # Uploader logic
         display_name = info.get('uploader') or info.get('channel') or "Unknown"
         username = info.get('uploader_id') or info.get('creator') or ""
         if username:
@@ -101,7 +100,7 @@ url: "{self.url}"
 tags: []
 ---
 
-![[{video_filename}]]   <!-- Video embedded from OUTPUT_VIDEOS -->
+![[{video_filename}]]
 
 ## Description
 {caption}
@@ -130,7 +129,7 @@ tags: []
         except FileNotFoundError:
             return "> Whisper not installed.\nRun: pip install -U openai-whisper && brew install ffmpeg"
         except Exception as e:
-            return f"> Transcription failed: {str(e)[:120]}"
+            return f"> Transcription failed: {str(e)[:150]}"
 
     def _parse_srt(self, srt_path: Path) -> str:
         raw = srt_path.read_text(encoding="utf-8", errors="ignore")
@@ -151,15 +150,14 @@ tags: []
             if line and not line.isdigit() and current_time:
                 lines.append(f"[{current_time}] {line}")
 
-        # Group every 2 lines for readability
         grouped = ["\n".join(lines[i:i+2]) for i in range(0, len(lines), 2)]
         return "\n\n".join(grouped) if grouped else "> No speech detected."
 
     def _cleanup_temp_files(self, base_name: str):
-        """Remove temporary files (srt, temp downloads, etc.)"""
-        for f in list(Config.OUTPUT_VIDEOS.iterdir()) + list(Config.OUTPUT_MD.iterdir()):
-            if f.is_file() and base_name in f.name and f.suffix not in {".md", ".mp4"}:
-                try:
-                    f.unlink(missing_ok=True)
-                except:
-                    pass
+        for folder in (Config.OUTPUT_VIDEOS, Config.OUTPUT_MD):
+            for f in list(folder.iterdir()):
+                if f.is_file() and base_name in f.name and f.suffix not in {".md", ".mp4"}:
+                    try:
+                        f.unlink(missing_ok=True)
+                    except:
+                        pass

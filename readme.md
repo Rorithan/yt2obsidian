@@ -5,6 +5,11 @@ python3 cli.py ""
 
 A lightweight macOS terminal tool that turns YouTube, Instagram, and webpage links into rich Obsidian-ready Markdown files.
 
+## Quick Start (Terminal)
+
+cd ~/yt2obsidian
+python3 -m venv venv && source venv/bin/activate
+
 ## Features
 - Auto-detects content type or force with `--type`
 - YouTube: title, description, uploader, date, thumbnail embed, subtitles (if available)
@@ -13,9 +18,8 @@ A lightweight macOS terminal tool that turns YouTube, Instagram, and webpage lin
 - Safe filenames, YAML frontmatter for Obsidian
 - Zero bloat — uses built-ins + minimal dependencies
 
-## Installation (one-time) and dependancies
+## Installation and dependancies
 
-```bash
 brew install yt-dlp
 pip install requests beautifulsoup4 markdownify  # only these three
 
@@ -31,9 +35,6 @@ yt2obsidian/
 │   ├── base.py
 │   ├── youtube.py
 │   ├── instagram.py
-│   └── webpage.py
-├── utils/
-│   ├── markdown.py
-│   └── helpers.py        # we'll add later
+├── utils.py
 ├── output/
 └── README.md
