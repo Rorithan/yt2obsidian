@@ -1,0 +1,14 @@
+# Dependencies
+__pycache__/
+*.pyc
+*.pyo
+
+# Output files (these are generated - don't commit them)
+output/
+
+# Optional: virtual environment
+venv/
+.env
+
+# macOS junk
+.DS_Store
