@@ -1,5 +1,8 @@
 # yt2obsidian
 
+terminal command for any supported link:
+python3 cli.py ""
+
 A lightweight macOS terminal tool that turns YouTube, Instagram, and webpage links into rich Obsidian-ready Markdown files.
 
 ## Features
@@ -10,7 +13,7 @@ A lightweight macOS terminal tool that turns YouTube, Instagram, and webpage lin
 - Safe filenames, YAML frontmatter for Obsidian
 - Zero bloat — uses built-ins + minimal dependencies
 
-## Installation (one-time)
+## Installation (one-time) and dependancies
 
 ```bash
 brew install yt-dlp
@@ -19,7 +22,7 @@ pip install requests beautifulsoup4 markdownify  # only these three
 Terminal commands
 python3 cli.py "https://youtube.com/watch?v=..."
 python3 cli.py "https://instagram.com/p/..." -o ~/Obsidian/Vault/Inbox
-python3 cli.py "https://example.com/article" --type web
+python3 cli.py "https://example.com/article" 
 
 yt2obsidian/
 ├── cli.py
