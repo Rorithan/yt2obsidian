@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 
 class ContentProcessor(ABC):
-    """Base class for all content processors (YouTube, Instagram, Webpage)."""
+    """Base class for all content processors."""
 
     def __init__(self, url: str, output_dir: Path):
         self.url = url.strip()
@@ -14,12 +14,11 @@ class ContentProcessor(ABC):
 
     @abstractmethod
     def process(self) -> Path:
-        """Process the URL and return the path to the generated markdown file."""
         pass
 
     def _get_safe_filename(self, title: str) -> str:
-        """Convert title to safe filename."""
+        """Convert title to safe filename with SPACES (no underscores)."""
         import re
-        clean = re.sub(r'[\\/*?:"<>|]', "", title)
-        clean = re.sub(r'\s+', "_", clean.strip())
-        return clean[:100]  # limit length
+        clean = re.sub(r'[\\/*?:"<>|]', "", title)      # remove bad chars
+        clean = re.sub(r'\s+', " ", clean.strip())      # normalize spaces
+        return clean[:150]                              # safe length for macOS
