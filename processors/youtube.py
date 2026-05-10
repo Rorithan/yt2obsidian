@@ -71,7 +71,7 @@ class YouTubeProcessor(ContentProcessor):
         return "No transcript available."
 
     def _process_vtt_for_obsidian(self, vtt_path: Path, safe_name: str) -> str:
-        """Ultra-aggressive cleaner for messy YouTube auto-captions."""
+        """Ultra-aggressive cleaner for YouTube auto-generated captions."""
         lines: list[str] = []
         current_ts: str | None = None
         seen = set()
@@ -94,13 +94,19 @@ class YouTubeProcessor(ContentProcessor):
                         .replace('<c>', '').replace('</c>', '')
                         .strip())
 
-                    # Remove every common timing/junk pattern YouTube auto-captions produce
+                    # Remove EVERY common YouTube auto-caption timing artifact
                     clean_text = re.sub(r'\d{2}:\d{2}\.\d{3}>', ' ', clean_text)
                     clean_text = re.sub(r'<\d{2}:\d{2}:\d{2}\.\d{3}>', ' ', clean_text)
                     clean_text = re.sub(r'<[^>]+>', '', clean_text)
+                    clean_text = re.sub(r'&gt;&gt;', '', clean_text)
                     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
 
-                    if clean_text and clean_text not in seen and len(clean_text) > 2 and not clean_text.startswith('['):
+                    # Skip very short fragments and duplicates
+                    if (clean_text and 
+                        clean_text not in seen and 
+                        len(clean_text) > 3 and 
+                        not clean_text.startswith('[')):
+                        
                         seen.add(clean_text)
                         timestamp_link = f"[[{safe_name}.mp4#{current_ts}|{current_ts}]]"
                         lines.append(f"{timestamp_link} {clean_text}")
