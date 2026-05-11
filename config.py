@@ -9,30 +9,41 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 class Config:
     """
     Central configuration for yt2obsidian.
-    All processors write to TEMP_OUTPUT_DIR first, then files are moved
-    to the four final paths you set below.
+    Processors write directly to the legacy OUTPUT_* paths (for full compatibility
+    with current youtube.py + instagram.py). These point to your final folders.
+    TEMP_OUTPUT_DIR + move logic is ready for when we update the processors later.
     """
 
     # ==================== TEMPORARY STAGING ====================
-    # (everything is written here first — never edit this)
     TEMP_OUTPUT_DIR: Path = PROJECT_ROOT / "output"
 
     # ==================== FINAL OUTPUT PATHS ====================
     # ←←← JUST PASTE YOUR DESIRED PATHS HERE →→→
-    # ~ expands automatically on macOS. These are created automatically.
-    YOUTUBE_MARKDOWN_DIR: Path = Path("~/Documents/Obsidian Vault/YouTube").expanduser()
-    YOUTUBE_IMAGE_DIR:    Path = Path("~/Documents/Obsidian Vault/YouTube/Attachments").expanduser()
+    # ~ expands automatically. Folders are created automatically.
+    YOUTUBE_MARKDOWN_DIR: Path = Path("/Users/rorymcknightiii/Library/Mobile Documents/iCloud~md~obsidian/Documents/rory-brain/utilities/data-repo/youtube").expanduser()
+    YOUTUBE_IMAGE_DIR:    Path = Path("/Users/rorymcknightiii/Library/Mobile Documents/iCloud~md~obsidian/Documents/rory-brain/utilities/images").expanduser()
 
-    INSTAGRAM_MARKDOWN_DIR: Path = Path("~/Documents/Obsidian Vault/Instagram").expanduser()
-    INSTAGRAM_VIDEO_DIR:    Path = Path("~/Documents/Obsidian Vault/Instagram/Videos").expanduser()
+    INSTAGRAM_MARKDOWN_DIR: Path = Path("/Users/rorymcknightiii/Library/Mobile Documents/iCloud~md~obsidian/Documents/rory-brain/utilities/data-repo/reels-tiktok").expanduser()
+    INSTAGRAM_VIDEO_DIR:    Path = Path("/Users/rorymcknightiii/Library/Mobile Documents/iCloud~md~obsidian/Documents/rory-brain/utilities/videos").expanduser()
+
+    # ==================== LEGACY COMPATIBILITY (current processors) ====================
+    # These point to the final paths you set above so nothing breaks.
+    # Instagram markdown will currently land in YOUTUBE_MARKDOWN_DIR (easy to change later).
+    OUTPUT_MD:     Path = YOUTUBE_MARKDOWN_DIR
+    OUTPUT_IMAGES: Path = YOUTUBE_IMAGE_DIR
+    OUTPUT_VIDEOS: Path = INSTAGRAM_VIDEO_DIR
 
     # ==================== DOWNLOAD SETTINGS ====================
-    DOWNLOAD_YOUTUBE_VIDEO: bool = False      # set True if you want full video + timestamps
-    DOWNLOAD_INSTAGRAM_VIDEO: bool = True     # Instagram reels/videos are always useful
+    DOWNLOAD_YOUTUBE_VIDEO: bool = False
+    DOWNLOAD_INSTAGRAM_VIDEO: bool = True
+
+    # Instagram needs browser cookies (yt-dlp built-in, no extra deps)
+    INSTAGRAM_BROWSER: str = "chrome"   # Options: "chrome", "safari", "firefox", "edge"
+                                         # → Must be logged into Instagram in that browser
 
     @classmethod
     def ensure_dirs(cls) -> None:
-        """Create ALL directories (temp + final). Called automatically."""
+        """Create all directories automatically."""
         for p in (
             cls.TEMP_OUTPUT_DIR,
             cls.YOUTUBE_MARKDOWN_DIR,
@@ -44,7 +55,7 @@ class Config:
 
     @classmethod
     def get_final_paths(cls) -> dict:
-        """Helper for utils/move logic — keeps processors clean."""
+        """Future-proof helper (used by utils/move logic once processors are updated)."""
         return {
             "youtube_md": cls.YOUTUBE_MARKDOWN_DIR,
             "youtube_img": cls.YOUTUBE_IMAGE_DIR,
@@ -54,7 +65,7 @@ class Config:
 
     @classmethod
     def set_temp_dir(cls, path: Optional[Path | str] = None) -> None:
-        """CLI --output support (still works exactly as before)."""
+        """CLI --output support."""
         if path:
             cls.TEMP_OUTPUT_DIR = Path(path).resolve()
         cls.ensure_dirs()
