@@ -38,7 +38,7 @@ class Config:
     DOWNLOAD_INSTAGRAM_VIDEO: bool = True
 
     # Instagram needs browser cookies (yt-dlp built-in, no extra deps)
-    INSTAGRAM_BROWSER: str = "chrome"   # Options: "chrome", "safari", "firefox", "edge"
+    INSTAGRAM_BROWSER: str = "safari"   # Options: "chrome", "safari", "firefox", "edge"
                                          # → Must be logged into Instagram in that browser
 
     @classmethod

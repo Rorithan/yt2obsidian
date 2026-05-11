@@ -6,11 +6,12 @@ from pathlib import Path
 from datetime import datetime
 from .base import ContentProcessor
 from config import Config
-from utils import clean_title_for_filename
+from utils import clean_title_for_filename, move_to_final_paths
 
 
 class InstagramProcessor(ContentProcessor):
-    """Processes Instagram reels/posts."""
+    """Instagram reel/post → clean Obsidian markdown + video.
+    Uses TEMP_OUTPUT_DIR for staging, then auto-moves to your final folders."""
 
     def process(self) -> Path:
         try:
@@ -26,7 +27,7 @@ class InstagramProcessor(ContentProcessor):
                 },
             }
 
-            print(f"🔑 Using {Config.INSTAGRAM_BROWSER} cookies for Instagram...")
+            print(f"Using {Config.INSTAGRAM_BROWSER} cookies for Instagram...")
 
             # Metadata
             with yt_dlp.YoutubeDL({**common_opts, 'skip_download': True}) as ydl:
@@ -38,15 +39,16 @@ class InstagramProcessor(ContentProcessor):
             video_id = info.get('id', 'igpost')
             base_name = f"{safe_name} [{video_id}]"
 
-            video_path = Config.OUTPUT_VIDEOS / f"{base_name}.mp4"
-            md_path = Config.OUTPUT_MD / f"{base_name}.md"
+            # Stage everything in TEMP_OUTPUT_DIR first
+            video_path = Config.TEMP_OUTPUT_DIR / f"{base_name}.mp4"
+            md_path = Config.TEMP_OUTPUT_DIR / f"{base_name}.md"
 
-            # Download video
-            print("⬇️  Downloading Instagram media...")
+            # Download video to temp
+            print("Downloading Instagram media...")
             dl_opts = {
                 **common_opts,
                 'skip_download': False,
-                'outtmpl': str(Config.OUTPUT_VIDEOS / base_name),
+                'outtmpl': str(Config.TEMP_OUTPUT_DIR / base_name),
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'merge_output_format': 'mp4',
             }
@@ -54,19 +56,20 @@ class InstagramProcessor(ContentProcessor):
             with yt_dlp.YoutubeDL(dl_opts) as ydl:
                 ydl.download([self.url])
 
-            # Transcribe
-            print("🎤 Transcribing with Whisper...")
+            # Transcribe (Whisper – already in your setup)
+            print("Transcribing with Whisper...")
             transcript = self._transcribe_video(video_path)
 
             # Build MD
             content = self._build_markdown(info, base_name, f"{base_name}.mp4", transcript, clean_title)
             md_path.write_text(content, encoding='utf-8')
 
-            self._cleanup_temp_files(base_name)
+            # Move to final folders you set in config.py
+            move_to_final_paths(base_name)
 
-            print(f"✅ Instagram → {md_path.name}")
-            print(f"    Video: {video_path.name}")
-            return md_path
+            print(f"✅ Instagram → {base_name}.md")
+            print(f"    Video: {base_name}.mp4")
+            return Config.INSTAGRAM_MARKDOWN_DIR / f"{base_name}.md"
 
         except Exception as e:
             print(f"❌ Instagram error: {e}")
@@ -118,7 +121,7 @@ tags: []
                 "--output_format", "srt",
                 "--verbose", "False"
             ]
-            subprocess.run(cmd, capture_output=True, text=True, cwd=Config.OUTPUT_VIDEOS, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, cwd=Config.TEMP_OUTPUT_DIR, check=True)
 
             srt_path = video_path.with_suffix(".srt")
             if srt_path.exists():
@@ -152,12 +155,3 @@ tags: []
 
         grouped = ["\n".join(lines[i:i+2]) for i in range(0, len(lines), 2)]
         return "\n\n".join(grouped) if grouped else "> No speech detected."
-
-    def _cleanup_temp_files(self, base_name: str):
-        for folder in (Config.OUTPUT_VIDEOS, Config.OUTPUT_MD):
-            for f in list(folder.iterdir()):
-                if f.is_file() and base_name in f.name and f.suffix not in {".md", ".mp4"}:
-                    try:
-                        f.unlink(missing_ok=True)
-                    except:
-                        pass
